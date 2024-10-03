@@ -29,5 +29,6 @@ namespace RpgApi.Models
         public int Disputas { get; set; }
         public int Vitórias { get; set; }
         public int Derrotas { get; set; }
+        public List<PersonagemHabilidade> PersonagemHabilidades { get; set; } = [];
     }
 }
