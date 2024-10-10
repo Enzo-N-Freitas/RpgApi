@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RpgApi.Data;
 using RpgApi.Models;
+using System.Collections.Generic;
 
 namespace RpgApi.Controllers
 {
@@ -20,18 +21,19 @@ namespace RpgApi.Controllers
         {
             _context = context;
         }
-        
+
         [HttpGet("{id}")]
         public async Task<IActionResult> GetSingle(int id)
         {
             try
             {
-                Personagem p = await _context.TB_PERSONAGENS
-                    .Include(ar => ar.Arma)
-                    .Include(ph => ph.PersonagemHabilidades)
-                        .ThenInclude(h => h.Habilidade)
-                    .FirstOrDefaultAsync(pBusca => pBusca.Id == id);
-                    
+                 Personagem? p = await _context.TB_PERSONAGENS
+                .Include(ar => ar.Arma)
+                .Include(us => us.Usuario)
+                .Include(p => p.PersonagemHabilidades)
+                    .ThenInclude(ps => ps.Habilidade)
+                .FirstOrDefaultAsync(pBusca => pBusca.Id == id);
+
                 return Ok(p);
             }
             catch (System.Exception ex)
@@ -43,7 +45,7 @@ namespace RpgApi.Controllers
         [HttpGet("GetAll")]
         public async Task<IActionResult> Get()
         {
-            try 
+            try
             {
                 List<Personagem> lista = await _context.TB_PERSONAGENS.ToListAsync();
                 return Ok(lista);
@@ -94,7 +96,7 @@ namespace RpgApi.Controllers
         }
 
         [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(int id) 
+        public async Task<IActionResult> Delete(int id)
         {
             try
             {
@@ -103,6 +105,27 @@ namespace RpgApi.Controllers
                 _context.TB_PERSONAGENS.Remove(pRemover);
                 int linhasAfetadas = await _context.SaveChangesAsync();
 
+                return Ok(linhasAfetadas);
+            }
+            catch (System.Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpPost("DeletePersonagemHabilidade")]
+        public async Task<IActionResult> DeleteAsync(PersonagemHabilidade ph)
+        {
+            try
+            {
+               PersonagemHabilidade? phRemover = await _context.TB_PERSONAGENS_HABILIDADES
+                    .FirstOrDefaultAsync(phBusca => phBusca.PersonagemId == ph.PersonagemId
+                     && phBusca.HabilidadeId == ph.HabilidadeId);
+                if(phRemover == null)
+                    throw new System.Exception("Personagem ou Habilidade não encontrados");
+
+                _context.TB_PERSONAGENS_HABILIDADES.Remove(phRemover);
+                int linhasAfetadas = await _context.SaveChangesAsync();
                 return Ok(linhasAfetadas);
             }
             catch (System.Exception ex)
