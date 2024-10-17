@@ -115,12 +115,11 @@ namespace RpgApi.Controllers
             }
         }
 
-        /* [HttpGet("PersonagemRandom")]
-
+        [HttpGet("PersonagemRandom")]
         public async Task<IActionResult> Sorteio()
         {
             List<Personagem> personagens =
-                await _context.Personagens.ToListAsync();
+                await _context.TB_PERSONAGENS.ToListAsync();
 
             int sorteio = new Random().Next(personagens.Count);
 
@@ -130,6 +129,142 @@ namespace RpgApi.Controllers
                 string.Format("N° Sorteado {0}. Personagem: {1}", sorteio, p.Nome);
 
             return Ok(msg);
-        }*/
+        }
+
+        [HttpPost("DisputaEmGrupo")]
+        public async Task<IActionResult> DisputaEmGrupoAsync(Disputa d)
+        {
+            try
+            {
+                d.Resultados = new List<string>();
+
+                List<Personagem> personagens = await _context.TB_PERSONAGENS
+                    .Include(p => p.Arma)
+                    .Include(p => p.PersonagemHabilidades).ThenInclude(ph => ph.Habilidade)
+                    .Where(p => d.ListaIdPersonagens.Contains(p.Id)).ToListAsync();
+
+                int qtdPersonagensVivos = personagens.FindAll(p => p.PontosVida > 0).Count;
+
+                while (qtdPersonagensVivos > 1)
+                {
+                    List<Personagem> atacantes = personagens.Where(p => p.PontosVida > 0).ToList();
+                    Personagem atacante = atacantes[new Random().Next(atacantes.Count)];
+                    d.AtacanteId = atacante.Id;
+
+                    List<Personagem> oponentes = personagens.Where(p => p.Id != atacante.Id && p.PontosVida > 0).ToList();
+                    Personagem oponente = oponentes[new Random().Next(oponentes.Count)];
+                    d.OponenteId = oponente.Id;
+
+                    int dano = 0;
+                    string ataqueUsado = string.Empty;
+                    string resultado = string.Empty;
+
+                    bool ataqueUsaArma = (new Random().Next(1) == 0);
+
+                    if (ataqueUsaArma && atacante.Arma != null)
+                    {
+                        dano = atacante.Arma.Dano + (new Random().Next(atacante.Forca));
+                        dano = dano - new Random().Next(oponente.Defesa);
+                        ataqueUsado = atacante.Arma.Nome;
+
+                        if (dano > 0)
+                            oponente.PontosVida = oponente.PontosVida - (int)dano;
+
+                        resultado =
+                            string.Format("{0} atacou {1} usando {2} com o dano {3}.", atacante.Nome, oponente.Nome, ataqueUsado, dano);
+                        d.Narracao += resultado;
+                        d.Resultados.Add(resultado);
+                    }
+                    else if (atacante.PersonagemHabilidades.Count != 0)
+                    {
+                        int sorteioHabilidadeId = new Random().Next(atacante.PersonagemHabilidades.Count);
+                        Habilidade habilidadeEscolhida = atacante.PersonagemHabilidades[sorteioHabilidadeId].Habilidade;
+                        ataqueUsado = habilidadeEscolhida.Nome;
+
+                        dano = habilidadeEscolhida.Dano + (new Random().Next(atacante.Inteligencia));
+                        dano = dano - new Random().Next(oponente.Defesa);
+
+                        if (dano > 0)
+                            oponente.PontosVida = oponente.PontosVida - (int)dano;
+
+                        resultado =
+                            string.Format("{0} atacou {1} usando {2} com o dano {3}.", atacante.Nome, oponente.Nome, ataqueUsado, dano);
+                        d.Narracao += resultado;
+                        d.Resultados.Add(resultado);
+                    }
+                    if (!string.IsNullOrEmpty(ataqueUsado))
+                    {
+                        atacante.Vitórias++;
+                        oponente.Derrotas++;
+                        atacante.Disputas++;
+                        oponente.Disputas++;
+
+                        d.Id = 0;
+                        d.DataDisputa = DateTime.Now;
+                        _context.TB_DISPUTAS.Add(d);
+                        await _context.SaveChangesAsync();
+                    }
+
+                    qtdPersonagensVivos = personagens.FindAll(p => p.PontosVida > 0).Count;
+
+                    if (qtdPersonagensVivos == 1)
+                    {
+                        string resultadoFinal =
+                            $"{atacante.Nome.ToUpper()} é CAMPEÃO com {atacante.PontosVida} pontos de vida restantes!";
+
+                        d.Narracao += resultadoFinal;
+                        d.Resultados.Add(resultadoFinal);
+
+                        break;
+                    }
+                }
+
+                _context.TB_PERSONAGENS.UpdateRange(personagens);
+                await _context.SaveChangesAsync();
+
+                return Ok(d);
+            }
+            catch (System.Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpDelete("ApagarDisputas")]
+        public async Task<IActionResult> DeleteAsync()
+        {
+            try
+            {
+                List<Disputa> disputas = await _context.TB_DISPUTAS.ToListAsync();
+                _context.TB_DISPUTAS.RemoveRange(disputas);
+                await _context.SaveChangesAsync();
+                return Ok("Disputas apagadas");
+            }
+            catch (System.Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpPut("RestaurarPontosVida")]
+        public async Task<IActionResult> RestaurarPontosVidaAsync(Personagem p)
+        {
+            try
+            {
+                int linhasAfetadas = 0;
+                Personagem? pEncontrado =
+                await _context.TB_PERSONAGENS.FirstOrDefaultAsync(pBusca => pBusca.Id == p.Id);
+                pEncontrado.PontosVida = 100;
+                bool atualizou = await TryUpdateModelAsync<Personagem>(pEncontrado, "p",
+                pAtualizar => pAtualizar.PontosVida);
+                if (atualizou)
+                    linhasAfetadas = await _context.SaveChangesAsync();
+                return Ok(linhasAfetadas);
+            }
+            catch (System.Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
     }
 }
